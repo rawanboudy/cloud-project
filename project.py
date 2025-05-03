@@ -7,15 +7,19 @@ import sys
 
 from tkinter.font import Font
 
-# Paths to QEMU binaries
+
 QEMU_IMG_PATH = "C:/msys64/ucrt64/bin/qemu-img.exe"
 QEMU_SYSTEM_PATH = "C:/msys64/ucrt64/bin/qemu-system-x86_64.exe"
 
-# Set the VM Projects directory
+
+
+
+
 VM_PROJECTS_DIR = "D:/VMs/projects/"
 os.makedirs(VM_PROJECTS_DIR, exist_ok=True)  # Create folder if not exists
 
-# Global Variables
+
+
 save_path = ""
 disk_path = ""
 iso_path = ""
@@ -62,14 +66,27 @@ def select_save_folder():
 def create_disk():
     global save_path
     disk_name = entry_name.get()
-    disk_size = entry_size.get()
+    disk_size = entry_size.get().strip().upper()
     disk_format = var_format.get()
 
     if not disk_name or not disk_size or not save_path:
         messagebox.showerror("Error", "Please fill in all fields!")
         return
-    if not disk_size[-1].upper() in ("G", "M", "K"):
+
+    if not disk_size[-1] in ("G", "M", "K"):
         messagebox.showerror("Error", "Disk size must end with G, M, or K!")
+        return
+
+    try:
+        size_value = float(disk_size[:-1])
+        unit = disk_size[-1]
+
+        max_allowed = {"K": 1024 * 1024, "M": 1024 * 10, "G": 100}  # e.g. max 100G
+        if size_value > max_allowed[unit]:
+            messagebox.showerror("Error", f"Maximum allowed size is {max_allowed[unit]}{unit}.")
+            return
+    except ValueError:
+        messagebox.showerror("Error", "Invalid size format.")
         return
 
     if not disk_name.endswith(f".{disk_format}"):
@@ -84,6 +101,7 @@ def create_disk():
         clear_create_fields()
     except subprocess.CalledProcessError as e:
         messagebox.showerror("Error", f"Failed to create disk.\nError: {e}")
+
 
 def select_disk():
     global disk_path
@@ -118,23 +136,37 @@ def resize_disk():
         messagebox.showerror("Error", "No disk selected!")
         return
 
-    new_size = entry_resize.get().strip()
-
+    new_size = entry_resize.get().strip().upper()
     if not new_size:
         messagebox.showerror("Error", "Please enter a new disk size!")
         return
 
-    # Validate suffix
-    if not any(new_size.upper().endswith(suffix) for suffix in ['K', 'M', 'G']):
-        messagebox.showerror("Invalid Size", "Size must end with K, M, or G (e.g., +1G, 10G)")
+    # Check suffix
+    if not new_size[-1] in ['K', 'M', 'G']:
+        messagebox.showerror("Invalid Size", "Size must end with K, M, or G (e.g., +1G or 20G)")
+        return
+
+    # Convert to bytes
+    try:
+        size_val = float(new_size[:-1])
+        multiplier = {'K': 1024, 'M': 1024**2, 'G': 1024**3}
+        new_bytes = size_val * multiplier[new_size[-1]]
+    except ValueError:
+        messagebox.showerror("Error", "Invalid size format.")
+        return
+
+    current_size = get_current_disk_size(disk_path)
+    if current_size is None:
+        return
+
+    if new_bytes < current_size:
+        messagebox.showerror("Error", "Shrinking disks is not supported! Please specify a larger size.")
         return
 
     # Warn for unsupported formats
-    unsupported_formats = [".vhdx", ".vmdk", ".vdi"]
     ext = os.path.splitext(disk_path)[1].lower()
-
-    if ext in unsupported_formats:
-        messagebox.showwarning("Unsupported Format", f"Resizing is not supported for {ext.upper()} disks.")
+    if ext in [".vhdx", ".vmdk", ".vdi"]:
+        messagebox.showwarning("Unsupported Format", f"Resizing not supported for {ext.upper()} format.")
         return
 
     try:
@@ -229,6 +261,17 @@ def start_vm():
     except Exception as e:
         messagebox.showerror("Error", f"Failed to start VM.\n{e}")
 
+
+
+def get_current_disk_size(path):
+    try:
+        output = subprocess.check_output([QEMU_IMG_PATH, "info", "--output=json", path], text=True)
+        info = json.loads(output)
+        return info["virtual-size"]
+    except Exception as e:
+        messagebox.showerror("Error", f"Could not get current disk size.\n{e}")
+        return None
+
 def save_vm_project():
     vm_name = os.path.splitext(os.path.basename(disk_path))[0]
     project = {
@@ -299,17 +342,17 @@ def clear_vm_fields():
     entry_cpu.insert(0, "2")
 
 def show_frame(frame, btn=None):
-    # Reset all button colors
+  
     for button in sidebar_buttons:
         button.config(bg=COLORS["bg_medium"])
     
-    # Highlight selected button
+    
     if btn:
         btn.config(bg=COLORS["bg_light"])
     
     frame.tkraise()
 
-# --- Create styled widgets ---
+
 def create_section_label(parent, text):
     return tk.Label(parent, text=text, font=("Segoe UI", 18, "bold"), 
                    bg=COLORS["bg_dark"], fg=COLORS["text_light"], 
@@ -345,7 +388,7 @@ def create_sidebar_button(parent, text, icon, command, accent_color):
                    anchor="w", width=20, cursor="hand2")
     return btn
 
-# --- Main GUI Window ---
+
 root = tk.Tk()
 root.title("QEMU Manager Pro")
 root.geometry("1000x650")
@@ -353,7 +396,7 @@ root.configure(bg=COLORS["bg_dark"])
 root.option_add("*TCombobox*Listbox*Background", COLORS["bg_medium"])
 root.option_add("*TCombobox*Listbox*Foreground", COLORS["text_light"])
 
-# Configure ttk styles
+
 style = ttk.Style()
 style.theme_use('default')
 style.configure("TCombobox", 
@@ -363,18 +406,18 @@ style.configure("TCombobox",
                 arrowcolor=COLORS["text_light"],
                 relief="flat")
 
-# Sidebar
+
 sidebar = tk.Frame(root, width=250, bg=COLORS["bg_medium"], bd=0)
 sidebar.pack(side="left", fill="y")
-sidebar.pack_propagate(False)  # Prevent shrinking
+sidebar.pack_propagate(False) 
 
-# App title in sidebar
+
 tk.Label(sidebar, text="QEMU Manager Pro", 
          font=("Segoe UI", 16, "bold"), 
          bg=COLORS["bg_medium"], fg=COLORS["accent_blue"],
          pady=25).pack(fill="x")
 
-# Main content frames
+
 frame_disk = tk.Frame(root, bg=COLORS["bg_dark"])
 frame_vm = tk.Frame(root, bg=COLORS["bg_dark"])
 frame_manage = tk.Frame(root, bg=COLORS["bg_dark"])
@@ -385,7 +428,7 @@ for frame in (frame_disk, frame_vm, frame_manage):
 
 
 
-# Sidebar buttons
+
 sidebar_buttons = []
 
 btn_disk = create_sidebar_button(sidebar, "Create Virtual Disk", "🖴", 
@@ -415,20 +458,16 @@ btn_manage = create_sidebar_button(sidebar, "Manage VMs", "🖥️",
 btn_manage.pack(fill="x", pady=2)
 sidebar_buttons.append(btn_manage)
 
-# App version
-tk.Label(sidebar, text="v1.0", 
-         font=("Segoe UI", 9), 
-         bg=COLORS["bg_medium"], fg=COLORS["text_muted"],
-         pady=10).pack(side="bottom", fill="x")
 
-# --- Create Virtual Disk Page ---
+
+
+
 create_section_label(frame_disk, "🖴  Create Virtual Disk").pack(pady=(30, 20))
 
-# Container for better spacing
 disk_container = tk.Frame(frame_disk, bg=COLORS["bg_dark"], padx=40)
 disk_container.pack(fill="both", expand=True)
 
-# Form frame with grid layout
+
 disk_form = tk.Frame(disk_container, bg=COLORS["bg_dark"])
 disk_form.pack(pady=20)
 
@@ -470,10 +509,7 @@ edit_container.pack(fill="both", expand=True)
 edit_disk_form = tk.Frame(edit_container, bg=COLORS["bg_dark"])
 edit_disk_form.pack(pady=20)
 
-# Then keep the rows as you have them:
-# Disk File row
-# Resize row
-# Convert format row
+
 
 
 # Select existing disk
